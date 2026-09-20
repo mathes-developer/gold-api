@@ -1,8 +1,8 @@
 [
   {
     "date": "2026-09-20",
-    "gold_22k_today": null,
-    "gold_24k_today": null,
-    "silver_today": null
+    "gold_22k_today": 14285.0,
+    "gold_24k_today": 15584.0,
+    "silver_today_per_gram": 260.0
   }
 ]
