@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # needed to commit updated JSON files
+  contents: write
 
 jobs:
   scrape-and-update:
@@ -24,8 +24,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: pip install -r requirements.txt
+
+      - name: Install Playwright Chromium browser
+        run: playwright install chromium --with-deps
 
       - name: Run scraper
         run: python scraper.py
