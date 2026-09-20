@@ -1,29 +1,11 @@
 {
   "city": "Chennai",
   "currency": "INR",
-  "last_updated": "2026-09-20T00:00:00Z",
+  "last_updated": "2026-09-20T02:38:34Z",
   "date": "2026-09-20",
   "gold": {
-    "22k": {
-      "today": 58000,
-      "yesterday": 57800,
-      "week_ago": 57200,
-      "month_ago": 55000,
-      "year_ago": 49000
-    },
-    "24k": {
-      "today": 63000,
-      "yesterday": 62800,
-      "week_ago": 62000,
-      "month_ago": 60000,
-      "year_ago": 53000
-    }
+    "22k": {},
+    "24k": {}
   },
-  "silver": {
-    "today": 850,
-    "yesterday": 845,
-    "week_ago": 830,
-    "month_ago": 800,
-    "year_ago": 700
-  }
+  "silver": {}
 }
