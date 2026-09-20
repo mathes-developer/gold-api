@@ -1,211 +1,258 @@
-import asyncio
-from playwright.async_api import async_playwright
+import requests
 from bs4 import BeautifulSoup
 import json
 import os
 import re
 from datetime import datetime, date, timezone
 
+# ── Config ─────────────────────────────────────────────────────────────────────
 GOLD_URL   = "https://www.goodreturns.in/gold-rates/chennai.html"
 SILVER_URL = "https://www.goodreturns.in/silver-rates/chennai.html"
-
 OUTPUT_DIR = "api"
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.google.com/",
+}
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def clean_price(text: str) -> float | None:
-    """Strip ₹, commas, spaces → float. Returns None if not a valid price."""
+def fetch(url: str) -> BeautifulSoup:
+    resp = requests.get(url, headers=HEADERS, timeout=20)
+    resp.raise_for_status()
+    return BeautifulSoup(resp.text, "lxml")
+
+
+def clean_price(text: str):
+    """Remove ₹, commas, HTML entities → float. Returns None if invalid."""
     if not text:
         return None
     cleaned = re.sub(r"[^\d.]", "", str(text).strip())
     try:
         val = float(cleaned)
-        # Gold prices are always > 1000 INR per gram or per 10g
-        return val if val > 100 else None
+        return val if val > 10 else None
     except ValueError:
         return None
 
 
-# ── Browser fetch ─────────────────────────────────────────────────────────────
-
-async def fetch_html(url: str) -> str:
-    """Launch headless Chromium, load page fully (JS executed), return HTML."""
-    async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (X11; Linux x86_64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            viewport={"width": 1280, "height": 900},
-            locale="en-IN",
-        )
-        page = await context.new_page()
-
-        try:
-            await page.goto(url, wait_until="networkidle", timeout=30_000)
-        except Exception:
-            # fallback: just wait 5 sec after domcontentloaded
-            await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-            await page.wait_for_timeout(5_000)
-
-        # Extra wait so JS tables finish rendering
-        await page.wait_for_timeout(3_000)
-        html = await page.content()
-        await browser.close()
-        return html
+def parse_gr_date(text: str):
+    """Parse goodreturns date string 'Sep 20, 2026' → date object."""
+    try:
+        return datetime.strptime(text.strip(), "%b %d, %Y").date()
+    except ValueError:
+        return None
 
 
-# ── Parser ────────────────────────────────────────────────────────────────────
-
-PERIOD_MAP = {
-    "today":     "today",
-    "current":   "today",
-    "yesterday": "yesterday",
-    "week":      "week_ago",
-    "7 day":     "week_ago",
-    "month":     "month_ago",
-    "30 day":    "month_ago",
-    "year":      "year_ago",
-    "365":       "year_ago",
-    "annual":    "year_ago",
-}
-
-
-def detect_period(label: str) -> str | None:
-    label = label.lower()
-    for keyword, period in PERIOD_MAP.items():
-        if keyword in label:
-            return period
+def date_to_period(row_date: date, today: date):
+    """Map a historical date to a summary period label."""
+    diff = (today - row_date).days
+    if diff == 0:
+        return "today"
+    elif diff == 1:
+        return "yesterday"
+    elif 5 <= diff <= 8:
+        return "week_ago"
+    elif 25 <= diff <= 35:
+        return "month_ago"
+    elif 355 <= diff <= 375:
+        return "year_ago"
     return None
 
 
-def parse_gold_from_html(html: str) -> dict:
+def extract_cell(cell):
     """
-    Parse 22K and 24K gold prices from goodreturns.in rendered HTML.
-    Returns: { "22k": {today, yesterday, week_ago, ...}, "24k": {...} }
+    From a table cell like '₹15,584 <span>(+142)</span>',
+    return (price_float, change_float).
+    Modifies the cell in-place (removes the span).
     """
-    soup = BeautifulSoup(html, "lxml")
+    change = None
+    span = cell.find("span")
+    if span:
+        m = re.search(r"([+-]?\d[\d,]*)", span.get_text())
+        if m:
+            try:
+                change = float(m.group(1).replace(",", ""))
+            except ValueError:
+                pass
+        span.decompose()
+    price = clean_price(cell.get_text(strip=True))
+    return price, change
+
+
+def get_date_tbody(soup: BeautifulSoup):
+    """
+    Both gold and silver pages have two <tbody class="tablebody">:
+      [0] = gram/weight calculator rows
+      [1] = date-indexed history rows  ← we want this one
+    """
+    tbodies = soup.find_all("tbody", class_="tablebody")
+    return tbodies[1] if len(tbodies) > 1 else (tbodies[0] if tbodies else None)
+
+
+# ── Gold ───────────────────────────────────────────────────────────────────────
+
+def scrape_gold_summary(soup: BeautifulSoup, today: date) -> dict:
+    """
+    Returns summary periods: today / yesterday / week_ago
+    Gold columns (per gram): DATE | 24K | 22K
+    """
     result = {"22k": {}, "24k": {}}
 
-    tables = soup.find_all("table")
+    # Today from price cards (most reliable)
+    span_22k = soup.find(id="22K-price")
+    span_24k = soup.find(id="24K-price")
+    if span_22k:
+        result["22k"]["today"] = clean_price(span_22k.get_text())
+    if span_24k:
+        result["24k"]["today"] = clean_price(span_24k.get_text())
 
-    for table in tables:
-        rows = table.find_all("tr")
-        for row in rows:
-            cells = row.find_all(["td", "th"])
-            if len(cells) < 2:
+    tbody = get_date_tbody(soup)
+    if tbody:
+        for row in tbody.find_all("tr"):
+            cells = row.find_all("td")
+            if len(cells) < 3:
                 continue
-
-            label = cells[0].get_text(" ", strip=True)
-            period = detect_period(label)
+            row_date = parse_gr_date(cells[0].get_text(strip=True))
+            if not row_date:
+                continue
+            period = date_to_period(row_date, today)
             if not period:
                 continue
-
-            # Collect all numeric prices from this row
-            prices = []
-            for cell in cells[1:]:
-                p = clean_price(cell.get_text(strip=True))
-                if p:
-                    prices.append(p)
-
-            # goodreturns typically: col1=22K, col2=24K
-            if len(prices) >= 1 and period not in result["22k"]:
-                result["22k"][period] = prices[0]
-            if len(prices) >= 2 and period not in result["24k"]:
-                result["24k"][period] = prices[1]
-
-    # ── Fallback: scan all text nodes for large numbers near period keywords ──
-    if not result["22k"].get("today"):
-        for tag in soup.find_all(True):
-            text = tag.get_text(" ", strip=True).lower()
-            period = detect_period(text)
-            if not period:
-                continue
-            nums = [clean_price(n) for n in re.findall(r"[\d,]+", text)]
-            nums = [n for n in nums if n and n > 1000]
-            if len(nums) >= 1 and period not in result["22k"]:
-                result["22k"][period] = nums[0]
-            if len(nums) >= 2 and period not in result["24k"]:
-                result["24k"][period] = nums[1]
+            p24, _ = extract_cell(cells[1])
+            p22, _ = extract_cell(cells[2])
+            if p24 and period not in result["24k"]:
+                result["24k"][period] = p24
+            if p22 and period not in result["22k"]:
+                result["22k"][period] = p22
 
     return result
 
 
-def parse_silver_from_html(html: str) -> dict:
-    """Parse silver prices. Returns { today, yesterday, week_ago, ... }"""
-    soup = BeautifulSoup(html, "lxml")
+def scrape_gold_10days(soup: BeautifulSoup) -> list:
+    """
+    Returns all rows from the 10-day gold history table.
+    Each row: { date, 24k_per_gram, 22k_per_gram, 24k_change, 22k_change }
+
+    Website table header: DATE | 24K | 22K  (prices are per gram)
+    """
+    rows = []
+    tbody = get_date_tbody(soup)
+    if not tbody:
+        return rows
+
+    for row in tbody.find_all("tr"):
+        cells = row.find_all("td")
+        if len(cells) < 3:
+            continue
+        row_date = parse_gr_date(cells[0].get_text(strip=True))
+        if not row_date:
+            continue
+        p24, c24 = extract_cell(cells[1])
+        p22, c22 = extract_cell(cells[2])
+        rows.append({
+            "date":          row_date.isoformat(),
+            "24k_per_gram":  p24,
+            "22k_per_gram":  p22,
+            "24k_change":    c24,
+            "22k_change":    c22,
+        })
+
+    return rows
+
+
+# ── Silver ─────────────────────────────────────────────────────────────────────
+
+def scrape_silver_summary(soup: BeautifulSoup, today: date) -> dict:
+    """
+    Returns summary periods: today / yesterday / week_ago
+    Silver table columns: DATE | 10 GRAM | 100 GRAM | 1 KG
+    We store per_gram = 10g_price / 10
+    """
     result = {}
-    tables = soup.find_all("table")
+    tbody = get_date_tbody(soup)
 
-    for table in tables:
-        rows = table.find_all("tr")
-        for row in rows:
-            cells = row.find_all(["td", "th"])
+    if tbody:
+        for row in tbody.find_all("tr"):
+            cells = row.find_all("td")
             if len(cells) < 2:
                 continue
-            label = cells[0].get_text(" ", strip=True)
-            period = detect_period(label)
-            if not period:
+            row_date = parse_gr_date(cells[0].get_text(strip=True))
+            if not row_date:
                 continue
-            price = clean_price(cells[1].get_text(strip=True))
-            # Silver per 10g is usually between 50–5000 INR
-            if price and price > 10 and period not in result:
-                result[period] = price
+            period = date_to_period(row_date, today)
+            if not period or period in result:
+                continue
+            # cells[1] = per 10 gram price  →  divide by 10 for per gram
+            price_10g = clean_price(cells[1].get_text(strip=True))
+            if price_10g:
+                result[period] = round(price_10g / 10, 2)
+
+    # Fallback from ticker (shows per kg: ₹2,60,000)
+    if "today" not in result:
+        for item in soup.select(".gr-wealth-ticker-item"):
+            label = item.select_one(".gr-wealth-ticker-label")
+            value = item.select_one(".gr-wealth-ticker-value")
+            if label and "silver" in label.get_text().lower() and value:
+                price_kg = clean_price(value.get_text())
+                if price_kg:
+                    result["today"] = round(price_kg / 1000, 2)
+                break
 
     return result
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+def scrape_silver_10days(soup: BeautifulSoup) -> list:
+    """
+    Returns all rows from the 10-day silver history table.
+    Each row: { date, per_gram, per_10g, per_kg, change_per_kg }
 
-async def main():
-    today_str = date.today().isoformat()
-    now_str   = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    Website table header: DATE | 10 GRAM | 100 GRAM | 1 KG
+    """
+    rows = []
+    tbody = get_date_tbody(soup)
+    if not tbody:
+        return rows
 
-    print(f"[INFO] Fetching gold page …")
-    gold_html = await fetch_html(GOLD_URL)
+    for row in tbody.find_all("tr"):
+        cells = row.find_all("td")
+        if len(cells) < 4:
+            continue
+        row_date = parse_gr_date(cells[0].get_text(strip=True))
+        if not row_date:
+            continue
 
-    print(f"[INFO] Fetching silver page …")
-    silver_html = await fetch_html(SILVER_URL)
+        per_10g  = clean_price(cells[1].get_text(strip=True))
+        per_100g = clean_price(cells[2].get_text(strip=True))
+        per_kg, change_per_kg = extract_cell(cells[3])
 
-    gold   = parse_gold_from_html(gold_html)
-    silver = parse_silver_from_html(silver_html)
+        rows.append({
+            "date":          row_date.isoformat(),
+            "per_gram":      round(per_10g / 10, 2) if per_10g else None,
+            "per_10g":       per_10g,
+            "per_100g":      per_100g,
+            "per_kg":        per_kg,
+            "change_per_kg": change_per_kg,
+        })
 
-    print(f"[DEBUG] Gold  22K: {gold['22k']}")
-    print(f"[DEBUG] Gold  24K: {gold['24k']}")
-    print(f"[DEBUG] Silver  : {silver}")
+    return rows
 
-    data = {
-        "city":         "Chennai",
-        "currency":     "INR",
-        "last_updated": now_str,
-        "date":         today_str,
-        "gold":         gold,
-        "silver":       silver,
-    }
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+# ── JSON writers ───────────────────────────────────────────────────────────────
 
-    # ── gold_prices.json (combined) ──────────────────────────────────────────
-    _write(f"{OUTPUT_DIR}/gold_prices.json", data)
+def write_json(path: str, data) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    print(f"[OK]  {path}")
 
-    # ── gold.json ────────────────────────────────────────────────────────────
-    _write(f"{OUTPUT_DIR}/gold.json", {
-        "city": data["city"], "currency": data["currency"],
-        "date": today_str, "last_updated": now_str,
-        **gold,
-    })
 
-    # ── silver.json ──────────────────────────────────────────────────────────
-    _write(f"{OUTPUT_DIR}/silver.json", {
-        "city": data["city"], "currency": data["currency"],
-        "date": today_str, "last_updated": now_str,
-        "silver": silver,
-    })
-
-    # ── history.json (last 365 days) ─────────────────────────────────────────
+def update_history(gold: dict, silver: dict, today_str: str) -> None:
     history_path = f"{OUTPUT_DIR}/history.json"
     history = []
     if os.path.exists(history_path):
@@ -220,19 +267,59 @@ async def main():
         "date":           today_str,
         "gold_22k_today": gold["22k"].get("today"),
         "gold_24k_today": gold["24k"].get("today"),
-        "silver_today":   silver.get("today"),
+        "silver_today_per_gram": silver.get("today"),
     })
     history = sorted(history, key=lambda x: x["date"])[-365:]
-    _write(history_path, history)
-
-    print("[DONE] All JSON files updated.")
+    write_json(history_path, history)
 
 
-def _write(path: str, data) -> None:
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    print(f"[OK]   {path}")
+# ── Entry point ────────────────────────────────────────────────────────────────
+
+def main():
+    today     = date.today()
+    today_str = today.isoformat()
+    now_str   = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    print("[INFO] Scraping gold …")
+    gold_soup = fetch(GOLD_URL)
+    gold      = scrape_gold_summary(gold_soup, today)
+    gold_10d  = scrape_gold_10days(gold_soup)
+
+    print("[INFO] Scraping silver …")
+    silver_soup = fetch(SILVER_URL)
+    silver      = scrape_silver_summary(silver_soup, today)
+    silver_10d  = scrape_silver_10days(silver_soup)
+
+    print(f"[DEBUG] Gold 22K      : {gold['22k']}")
+    print(f"[DEBUG] Gold 24K      : {gold['24k']}")
+    print(f"[DEBUG] Silver /gram  : {silver}")
+    print(f"[DEBUG] Gold 10-day rows   : {len(gold_10d)}")
+    print(f"[DEBUG] Silver 10-day rows : {len(silver_10d)}")
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    # ── gold_prices.json  (single file — all data) ────────────────────────────
+    write_json(f"{OUTPUT_DIR}/gold_prices.json", {
+        "city":         "Chennai",
+        "currency":     "INR",
+        "last_updated": now_str,
+        "date":         today_str,
+        "gold": {
+            "unit":        "per_gram",
+            "summary":     gold,
+            "last_10_days": gold_10d,
+        },
+        "silver": {
+            "summary":     silver,
+            "last_10_days": silver_10d,
+        },
+    })
+
+    # ── history.json  (365-day rolling log, kept separate as it grows daily) ──
+    update_history(gold, silver, today_str)
+
+    print("[DONE] All files updated.")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
