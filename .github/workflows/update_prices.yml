@@ -1,0 +1,39 @@
+name: Update Gold & Silver Prices
+
+on:
+  # Run every day at 8:30 AM IST (3:00 AM UTC)
+  schedule:
+    - cron: "0 3 * * *"
+
+  # Allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to commit updated JSON files
+
+jobs:
+  scrape-and-update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scraper
+        run: python scraper.py
+
+      - name: Commit and push updated JSON files
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add api/
+          git diff --staged --quiet || git commit -m "chore: update gold/silver prices $(date -u +'%Y-%m-%d')"
+          git push
