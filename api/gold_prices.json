@@ -1,18 +1,18 @@
 {
   "city": "Chennai",
   "currency": "INR",
-  "last_updated": "2026-09-21T03:12:36Z",
+  "last_updated": "2026-09-21T06:55:44Z",
   "date": "2026-09-21",
   "gold": {
     "unit": "per_gram",
     "summary": {
       "22k": {
-        "today": 14284.0,
+        "today": 14270.0,
         "yesterday": 14285.0,
         "week_ago": 14065.0
       },
       "24k": {
-        "today": 15583.0,
+        "today": 15568.0,
         "yesterday": 15584.0,
         "week_ago": 15344.0
       }
@@ -20,8 +20,8 @@
     "last_10_days": [
       {
         "date": "2026-09-21",
-        "24k_per_gram": 15583.0,
-        "22k_per_gram": 14284.0,
+        "24k_per_gram": 15568.0,
+        "22k_per_gram": 14270.0,
         "24k_change": null,
         "22k_change": null
       },
@@ -92,18 +92,18 @@
   },
   "silver": {
     "summary": {
-      "today": 259.9,
+      "today": 260.0,
       "yesterday": 260.0,
       "week_ago": 250.0
     },
     "last_10_days": [
       {
         "date": "2026-09-21",
-        "per_gram": 259.9,
-        "per_10g": 2599.0,
-        "per_100g": 25990.0,
-        "per_kg": 259900.0,
-        "change_per_kg": -100.0
+        "per_gram": 260.0,
+        "per_10g": 2600.0,
+        "per_100g": 26000.0,
+        "per_kg": 260000.0,
+        "change_per_kg": 0.0
       },
       {
         "date": "2026-09-20",
