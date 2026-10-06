@@ -1,27 +1,34 @@
 {
   "city": "Chennai",
   "currency": "INR",
-  "last_updated": "2026-10-05T03:14:07Z",
-  "date": "2026-10-05",
+  "last_updated": "2026-10-06T03:12:51Z",
+  "date": "2026-10-06",
   "gold": {
     "unit": "per_gram",
     "summary": {
       "22k": {
         "today": 13674.0,
         "yesterday": 13675.0,
-        "week_ago": 13710.0
+        "week_ago": 13680.0
       },
       "24k": {
         "today": 14917.0,
         "yesterday": 14918.0,
-        "week_ago": 14957.0
+        "week_ago": 14924.0
       }
     },
     "last_10_days": [
       {
-        "date": "2026-10-05",
+        "date": "2026-10-06",
         "24k_per_gram": 14917.0,
         "22k_per_gram": 13674.0,
+        "24k_change": null,
+        "22k_change": null
+      },
+      {
+        "date": "2026-10-05",
+        "24k_per_gram": 14918.0,
+        "22k_per_gram": 13675.0,
         "24k_change": null,
         "22k_change": null
       },
@@ -29,8 +36,8 @@
         "date": "2026-10-04",
         "24k_per_gram": 14918.0,
         "22k_per_gram": 13675.0,
-        "24k_change": null,
-        "22k_change": null
+        "24k_change": 0.0,
+        "22k_change": 0.0
       },
       {
         "date": "2026-10-03",
@@ -50,8 +57,8 @@
         "date": "2026-10-01",
         "24k_per_gram": 14924.0,
         "22k_per_gram": 13680.0,
-        "24k_change": -33.0,
-        "22k_change": -30.0
+        "24k_change": null,
+        "22k_change": null
       },
       {
         "date": "2026-09-30",
@@ -78,15 +85,8 @@
         "date": "2026-09-27",
         "24k_per_gram": 15273.0,
         "22k_per_gram": 14000.0,
-        "24k_change": null,
-        "22k_change": null
-      },
-      {
-        "date": "2026-09-26",
-        "24k_per_gram": 15273.0,
-        "22k_per_gram": 14000.0,
-        "24k_change": -11.0,
-        "22k_change": -10.0
+        "24k_change": 0.0,
+        "22k_change": 0.0
       }
     ]
   },
@@ -94,16 +94,24 @@
     "summary": {
       "today": 244.9,
       "yesterday": 245.0,
-      "week_ago": 245.0
+      "week_ago": 240.0
     },
     "last_10_days": [
       {
-        "date": "2026-10-05",
+        "date": "2026-10-06",
         "per_gram": 244.9,
         "per_10g": 2449.0,
         "per_100g": 24490.0,
         "per_kg": 244900.0,
         "change_per_kg": -100.0
+      },
+      {
+        "date": "2026-10-05",
+        "per_gram": 245.0,
+        "per_10g": 2450.0,
+        "per_100g": 24500.0,
+        "per_kg": 245000.0,
+        "change_per_kg": 0.0
       },
       {
         "date": "2026-10-04",
@@ -163,14 +171,6 @@
       },
       {
         "date": "2026-09-27",
-        "per_gram": 250.0,
-        "per_10g": 2500.0,
-        "per_100g": 25000.0,
-        "per_kg": 250000.0,
-        "change_per_kg": 0.0
-      },
-      {
-        "date": "2026-09-26",
         "per_gram": 250.0,
         "per_10g": 2500.0,
         "per_100g": 25000.0,
