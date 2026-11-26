@@ -400,5 +400,11 @@
     "gold_22k_today": 11420.0,
     "gold_24k_today": 12458.0,
     "silver_today_per_gram": 165.0
+  },
+  {
+    "date": "2026-11-26",
+    "gold_22k_today": 11540.0,
+    "gold_24k_today": 12589.0,
+    "silver_today_per_gram": 165.0
   }
 ]
